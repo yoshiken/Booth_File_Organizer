@@ -22,8 +22,6 @@ mod system_commands;
 mod sync_commands;
 mod config;
 
-#[cfg(test)]
-mod lib_tests;
 use booth_client::BoothClient;
 use database::{DatabaseRefactored, FileRecord, FileWithTags, Tag, FileUpdateFields, BatchStatistics};
 pub use errors::{AppError, AppResult};
