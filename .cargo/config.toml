@@ -1,0 +1,26 @@
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
+
+[target.x86_64-pc-windows-msvc]
+# Windows MSVC target (for native Windows builds)
+
+[target.x86_64-unknown-linux-gnu]
+# Linux target (default)
+
+[target.x86_64-apple-darwin]
+# macOS target
+
+[build]
+# Default target for this project
+# target = "x86_64-unknown-linux-gnu"
+
+[env]
+# Environment variables for cross-compilation
+PKG_CONFIG_ALLOW_CROSS = "1"
+
+# Windows cross-compilation specific settings
+[target.x86_64-pc-windows-gnu.env]
+PKG_CONFIG_ALLOW_CROSS = "1"
+CC = "x86_64-w64-mingw32-gcc"
+CXX = "x86_64-w64-mingw32-g++"

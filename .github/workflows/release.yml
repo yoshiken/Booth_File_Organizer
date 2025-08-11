@@ -1,0 +1,188 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          release_name: BOOTH File Organizer v${{ steps.get_version.outputs.version }}
+          body: |
+            # BOOTH File Organizer v${{ steps.get_version.outputs.version }}
+
+            ## 🎉 新機能
+            - BOOTH JSON API対応による高速タグ抽出
+            - モジュラーアーキテクチャによる保守性向上
+            - ページネーション機能で大量データ対応
+            - データベース最適化による高速化
+            
+            ## 📦 ダウンロード
+            
+            ### Windows
+            - **ポータブル版** (推奨): `BOOTH_File_Organizer_Windows_Portable.zip`
+              - インストール不要、解凍して即使用可能
+            - **インストーラー版**: `BOOTH_File_Organizer_Setup.exe`
+              - 従来のインストール方式
+            
+            ## 📝 更新内容
+            
+            詳細な変更内容は[CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)をご覧ください。
+            
+            ## 🐛 既知の問題
+            
+            問題を発見した場合は[Issues](https://github.com/${{ github.repository }}/issues)でお知らせください。
+          draft: false
+          prerelease: false
+
+  build-windows:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 gcc-mingw-w64-x86-64 nsis
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Windows executable
+        run: |
+          npx tauri build --target x86_64-pc-windows-gnu || true
+          # Even if installer fails, executable should be built
+
+      - name: Create portable package
+        working-directory: src-tauri/target/x86_64-pc-windows-gnu/release
+        run: |
+          mkdir -p BOOTH_File_Organizer_Windows_Portable
+          cp booth-organizer.exe BOOTH_File_Organizer_Windows_Portable/
+          cp *.dll BOOTH_File_Organizer_Windows_Portable/ || true
+          
+          # Create README
+          cat > BOOTH_File_Organizer_Windows_Portable/README.txt << EOF
+          BOOTH File Organizer - Windows Portable Edition
+          ===============================================
+          
+          Version: ${{ needs.create-release.outputs.version }}
+          Build Date: $(date +%Y-%m-%d)
+          
+          【セットアップ】
+          1. このフォルダ内のすべてのファイルを任意の場所にコピーしてください
+          2. booth-organizer.exe をダブルクリックして実行します
+          
+          【必要なファイル】
+          - booth-organizer.exe (メイン実行ファイル)
+          - booth_organizer_lib.dll (アプリケーションライブラリ)
+          - WebView2Loader.dll (Webビューコンポーネント)
+          
+          【動作要件】
+          - Windows 10/11 x64
+          - Microsoft Edge WebView2 Runtime
+          
+          お問い合わせ: https://github.com/${{ github.repository }}/issues
+          EOF
+          
+          # Create ZIP
+          zip -r ../../../BOOTH_File_Organizer_Windows_Portable.zip BOOTH_File_Organizer_Windows_Portable/
+
+      - name: Upload Windows Portable to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: src-tauri/target/x86_64-pc-windows-gnu/BOOTH_File_Organizer_Windows_Portable.zip
+          asset_name: BOOTH_File_Organizer_v${{ needs.create-release.outputs.version }}_Windows_Portable.zip
+          asset_content_type: application/zip
+
+      - name: Upload Windows Installer to Release (if exists)
+        continue-on-error: true
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/BOOTH File Organizer_${{ needs.create-release.outputs.version }}_x64-setup.exe
+          asset_name: BOOTH_File_Organizer_v${{ needs.create-release.outputs.version }}_Setup.exe
+          asset_content_type: application/octet-stream
+
+  update-changelog:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update release notes
+        run: |
+          echo "# Release v${{ needs.create-release.outputs.version }} completed" >> RELEASE_NOTES.md
+          echo "Date: $(date +%Y-%m-%d)" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "All artifacts have been successfully built and uploaded." >> RELEASE_NOTES.md

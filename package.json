@@ -1,0 +1,37 @@
+{
+  "name": "booth-organizer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:build:windows": "tauri build --target x86_64-pc-windows-gnu",
+    "tauri:build:windows:portable": "tauri build --target x86_64-pc-windows-gnu && echo 'Portable version built at: src-tauri/target/x86_64-pc-windows-gnu/release/booth-organizer.exe'",
+    "tauri:dev": "tauri dev",
+    "docs:generate": "cd src-tauri && cargo run --bin build-docs",
+    "docs:types": "cd src-tauri && cargo test --lib api_types::generate_typescript_bindings",
+    "build:full": "npm run docs:generate && npm run build && npm run tauri:build:windows",
+    "test": "echo \"No frontend tests configured yet\"",
+    "lint": "echo \"No linting configured yet\"",
+    "format": "echo \"No formatting configured yet\""
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.3.1",
+    "@tauri-apps/plugin-opener": "^2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3"
+  }
+}
