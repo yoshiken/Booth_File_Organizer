@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use log::error;
 
 use crate::booth_client::BoothClient;
-use crate::database_refactored::DatabaseRefactored;
+use crate::database::DatabaseRefactored;
 use crate::api_types::FileRecord;
 use crate::commands::file_commands::ProcessResult;
 

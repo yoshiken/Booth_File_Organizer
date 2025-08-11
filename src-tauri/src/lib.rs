@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 pub mod booth_client;
 pub mod errors;
-mod database_refactored;
+mod database;
 mod tag_validator;
 mod repositories;
 mod api_types;
@@ -21,12 +21,11 @@ mod process_commands;
 mod system_commands;
 mod sync_commands;
 mod config;
-mod paginated_commands;
 
 #[cfg(test)]
 mod lib_tests;
 use booth_client::BoothClient;
-use database_refactored::{DatabaseRefactored, FileRecord, FileWithTags, Tag, FileUpdateFields, BatchStatistics};
+use database::{DatabaseRefactored, FileRecord, FileWithTags, Tag, FileUpdateFields, BatchStatistics};
 pub use errors::{AppError, AppResult};
 use crate::config::{app, files, regex};
 
@@ -49,7 +48,7 @@ impl AppState {
         }
 
         let db_path = app_data_dir.join(app::DATABASE_FILENAME);
-        let db = DatabaseRefactored::new(&db_path)?;
+        let db = DatabaseRefactored::new(&db_path.to_string_lossy())?;
         let booth_client = BoothClient::new();
 
         Ok(AppState {
@@ -89,8 +88,8 @@ pub struct MissingFile {
     pub id: i64,
     pub file_name: String,
     pub file_path: String,
-    pub booth_shop_name: Option<String>,
-    pub booth_product_name: Option<String>,
+    pub booth_shop_name: Option<String>, // author_name を使用
+    pub booth_product_name: Option<String>, // product_name を使用
 }
 
 // System/utility commands are now in system_commands.rs module
@@ -378,12 +377,6 @@ pub fn run() {
             booth_commands::update_file_booth_url_db,
             sync_commands::sync_file_system_db,
             sync_commands::remove_missing_files_db,
-            // 新しいページネーション対応コマンド
-            paginated_commands::get_all_files_paginated,
-            paginated_commands::get_files_with_tags_paginated,
-            paginated_commands::search_files_paginated,
-            paginated_commands::get_all_tags_paginated,
-            paginated_commands::search_files_by_tags_paginated,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

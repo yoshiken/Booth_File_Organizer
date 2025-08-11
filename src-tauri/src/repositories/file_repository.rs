@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
-use crate::database_refactored::{FileRecord, FileUpdateFields, BatchStatistics};
+use crate::database::{FileRecord, FileUpdateFields};
 
 /// ファイル操作の責務を持つRepository trait
 pub trait FileRepository {
@@ -11,10 +11,9 @@ pub trait FileRepository {
     fn find_by_id(&self, id: i64) -> Result<Option<FileRecord>>;
     fn find_all(&self) -> Result<Vec<FileRecord>>;
     fn delete(&self, file_id: i64) -> Result<Option<String>>;
-    fn update_booth_url(&self, file_id: i64, booth_url: Option<&str>) -> Result<()>;
+    fn update_product_fields(&self, file_id: i64, update_fields: &FileUpdateFields) -> Result<()>;
     fn batch_delete(&self, file_ids: &[i64]) -> Result<Vec<String>>;
     fn batch_update(&self, file_ids: &[i64], update_fields: &FileUpdateFields) -> Result<()>;
-    fn get_batch_statistics(&self, file_ids: &[i64]) -> Result<BatchStatistics>;
     
     // 新しいページネーションメソッド
     fn find_all_paginated(&self, page: u32, page_size: u32, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<(Vec<FileRecord>, u32)>;
@@ -36,23 +35,22 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
     fn insert(&self, file: &FileRecord) -> Result<i64> {
         let _id = self.conn.execute(
             "INSERT INTO files (
-                file_path, file_name, file_size, file_hash, booth_product_id,
-                booth_shop_name, booth_product_name, booth_url, booth_price,
-                booth_thumbnail_path, encoding_info, metadata, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now'))",
+                file_path, file_name, file_size, modified_time,
+                product_id, product_name, author_name, price,
+                description, thumbnail_url, product_url
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 file.file_path,
                 file.file_name,
                 file.file_size,
-                file.file_hash,
-                file.booth_product_id,
-                file.booth_shop_name,
-                file.booth_product_name,
-                file.booth_url,
-                file.booth_price,
-                file.booth_thumbnail_path,
-                file.encoding_info,
-                file.metadata,
+                file.modified_time,
+                file.product_id,
+                file.product_name,
+                file.author_name,
+                file.price,
+                file.description,
+                file.thumbnail_url,
+                file.product_url,
             ],
         )?;
 
@@ -61,9 +59,9 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
 
     fn find_by_id(&self, id: i64) -> Result<Option<FileRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name, 
+                    author_name, price, description, thumbnail_url, product_url
              FROM files WHERE id = ?1"
         )?;
 
@@ -73,17 +71,16 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -95,9 +92,9 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
 
     fn find_all(&self) -> Result<Vec<FileRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files ORDER BY created_at DESC"
         )?;
 
@@ -107,17 +104,16 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -146,10 +142,23 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
         Ok(file_path)
     }
 
-    fn update_booth_url(&self, file_id: i64, booth_url: Option<&str>) -> Result<()> {
+    fn update_product_fields(&self, file_id: i64, update_fields: &FileUpdateFields) -> Result<()> {
         self.conn.execute(
-            "UPDATE files SET booth_url = ?1, updated_at = datetime('now') WHERE id = ?2",
-            params![booth_url, file_id],
+            "UPDATE files SET 
+             product_id = ?1, product_name = ?2, author_name = ?3,
+             price = ?4, description = ?5, thumbnail_url = ?6,
+             product_url = ?7, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?8",
+            params![
+                update_fields.product_id,
+                update_fields.product_name,
+                update_fields.author_name,
+                update_fields.price,
+                update_fields.description,
+                update_fields.thumbnail_url,
+                update_fields.product_url,
+                file_id
+            ],
         )?;
         Ok(())
     }
@@ -179,79 +188,31 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
 
     fn batch_update(&self, file_ids: &[i64], update_fields: &FileUpdateFields) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        let mut update_clauses = Vec::new();
-        let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
-
-        if let Some(shop_name) = &update_fields.booth_shop_name {
-            update_clauses.push("booth_shop_name = ?");
-            params.push(shop_name);
-        }
-        if let Some(product_name) = &update_fields.booth_product_name {
-            update_clauses.push("booth_product_name = ?");
-            params.push(product_name);
-        }
-        if let Some(url) = &update_fields.booth_url {
-            update_clauses.push("booth_url = ?");
-            params.push(url);
-        }
-        if let Some(metadata) = &update_fields.metadata {
-            update_clauses.push("metadata = ?");
-            params.push(metadata);
-        }
-
-        update_clauses.push("updated_at = datetime('now')");
-
-        let update_sql = format!(
-            "UPDATE files SET {} WHERE id = ?",
-            update_clauses.join(", ")
-        );
-
+        
         for file_id in file_ids {
-            params.push(file_id);
-            tx.execute(&update_sql, &params[..])?;
-            params.pop(); // Remove file_id for next iteration
+            tx.execute(
+                "UPDATE files SET 
+                 product_id = ?1, product_name = ?2, author_name = ?3,
+                 price = ?4, description = ?5, thumbnail_url = ?6,
+                 product_url = ?7, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?8",
+                params![
+                    update_fields.product_id,
+                    update_fields.product_name,
+                    update_fields.author_name,
+                    update_fields.price,
+                    update_fields.description,
+                    update_fields.thumbnail_url,
+                    update_fields.product_url,
+                    file_id
+                ],
+            )?;
         }
 
         tx.commit()?;
         Ok(())
     }
 
-    fn get_batch_statistics(&self, file_ids: &[i64]) -> Result<BatchStatistics> {
-        if file_ids.is_empty() {
-            return Ok(BatchStatistics {
-                total_files: 0,
-                total_size: None,
-                unique_shops: 0,
-                unique_products: 0,
-            });
-        }
-
-        let placeholders: Vec<String> = file_ids.iter().map(|_| "?".to_string()).collect();
-        let query = format!(
-            "SELECT 
-                COUNT(*) as total_files,
-                SUM(file_size) as total_size,
-                COUNT(DISTINCT booth_shop_name) as unique_shops,
-                COUNT(DISTINCT booth_product_id) as unique_products
-             FROM files 
-             WHERE id IN ({})",
-            placeholders.join(",")
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let params: Vec<&dyn rusqlite::ToSql> = file_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-        
-        let stats = stmt.query_row(&params[..], |row| {
-            Ok(BatchStatistics {
-                total_files: row.get(0)?,
-                total_size: row.get(1)?,
-                unique_shops: row.get(2)?,
-                unique_products: row.get(3)?,
-            })
-        })?;
-
-        Ok(stats)
-    }
 
     fn find_all_paginated(&self, page: u32, page_size: u32, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<(Vec<FileRecord>, u32)> {
         let sort_by = sort_by.unwrap_or("created_at");
@@ -259,7 +220,7 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
         let offset = (page.saturating_sub(1)) * page_size;
 
         // 検証: sort_byは許可されたカラムのみ
-        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "booth_shop_name", "booth_product_name"];
+        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "author_name", "product_name"];
         if !allowed_columns.contains(&sort_by) {
             return Err(anyhow::anyhow!("Invalid sort_by column: {}", sort_by));
         }
@@ -280,9 +241,9 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
 
         // ページネーションされたファイルを取得
         let query = format!(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files ORDER BY {} {} LIMIT ? OFFSET ?",
             sort_by, sort_order
         );
@@ -294,17 +255,16 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -322,7 +282,7 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
         let offset = (page.saturating_sub(1)) * page_size;
 
         // 検証: sort_byは許可されたカラムのみ
-        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "booth_shop_name", "booth_product_name"];
+        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "author_name", "product_name"];
         if !allowed_columns.contains(&sort_by) {
             return Err(anyhow::anyhow!("Invalid sort_by column: {}", sort_by));
         }
@@ -340,19 +300,19 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
         let total_count: u32 = self.conn.query_row(
             "SELECT COUNT(*) FROM files WHERE 
              file_name LIKE ?1 OR 
-             booth_shop_name LIKE ?1 OR 
-             booth_product_name LIKE ?1",
+             author_name LIKE ?1 OR 
+             product_name LIKE ?1",
             [&search_pattern],
             |row| row.get(0)
         )?;
 
         // ページネーションされた検索結果を取得
         let search_query = format!(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files 
-             WHERE file_name LIKE ?1 OR booth_shop_name LIKE ?1 OR booth_product_name LIKE ?1
+             WHERE file_name LIKE ?1 OR author_name LIKE ?1 OR product_name LIKE ?1
              ORDER BY {} {} LIMIT ? OFFSET ?",
             sort_by, sort_order
         );
@@ -364,17 +324,16 @@ impl<'a> FileRepository for SqliteFileRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -401,20 +360,19 @@ mod tests {
         conn.execute(
             "CREATE TABLE files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
+                file_path TEXT UNIQUE NOT NULL,
                 file_name TEXT NOT NULL,
-                file_size INTEGER,
-                file_hash TEXT,
-                booth_product_id INTEGER,
-                booth_shop_name TEXT,
-                booth_product_name TEXT,
-                booth_url TEXT,
-                booth_price INTEGER,
-                booth_thumbnail_path TEXT,
-                encoding_info TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                metadata TEXT
+                file_size INTEGER NOT NULL,
+                modified_time INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                product_id TEXT,
+                product_name TEXT,
+                author_name TEXT,
+                price INTEGER,
+                description TEXT,
+                thumbnail_url TEXT,
+                product_url TEXT
             )",
             [],
         ).unwrap();
@@ -431,18 +389,17 @@ mod tests {
             id: None,
             file_path: "/test/file.zip".to_string(),
             file_name: "file.zip".to_string(),
-            file_size: Some(1024),
-            file_hash: Some("test_hash".to_string()),
-            booth_product_id: Some(12345),
-            booth_shop_name: Some("Test Shop".to_string()),
-            booth_product_name: Some("Test Product".to_string()),
-            booth_url: Some("https://test.booth.pm/items/12345".to_string()),
-            booth_price: Some(500),
-            booth_thumbnail_path: Some("/test/thumb.jpg".to_string()),
-            encoding_info: Some("UTF-8".to_string()),
-            created_at: None,
-            updated_at: None,
-            metadata: Some("test metadata".to_string()),
+            file_size: 1024,
+            modified_time: 1609459200, // Unix timestamp
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
+            product_id: Some("12345".to_string()),
+            product_name: Some("Test Product".to_string()),
+            author_name: Some("Test Shop".to_string()),
+            price: Some(500),
+            description: Some("Test description".to_string()),
+            thumbnail_url: Some("/test/thumb.jpg".to_string()),
+            product_url: Some("https://test.booth.pm/items/12345".to_string()),
         };
 
         // Insert test
@@ -455,8 +412,8 @@ mod tests {
         
         let file = retrieved_file.unwrap();
         assert_eq!(file.file_name, "file.zip");
-        assert_eq!(file.booth_shop_name, Some("Test Shop".to_string()));
-        assert_eq!(file.file_size, Some(1024));
+        assert_eq!(file.author_name, Some("Test Shop".to_string()));
+        assert_eq!(file.file_size, 1024);
     }
 
     #[test]
@@ -473,36 +430,34 @@ mod tests {
             id: None,
             file_path: "/test/file1.zip".to_string(),
             file_name: "file1.zip".to_string(),
-            file_size: Some(1024),
-            file_hash: Some("hash1".to_string()),
-            booth_product_id: None,
-            booth_shop_name: None,
-            booth_product_name: None,
-            booth_url: None,
-            booth_price: None,
-            booth_thumbnail_path: None,
-            encoding_info: None,
-            created_at: None,
-            updated_at: None,
-            metadata: None,
+            file_size: 1024,
+            modified_time: 1609459200,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
+            product_id: None,
+            product_name: None,
+            author_name: None,
+            price: None,
+            description: None,
+            thumbnail_url: None,
+            product_url: None,
         };
 
         let file2 = FileRecord {
             id: None,
             file_path: "/test/file2.zip".to_string(),
             file_name: "file2.zip".to_string(),
-            file_size: Some(2048),
-            file_hash: Some("hash2".to_string()),
-            booth_product_id: None,
-            booth_shop_name: None,
-            booth_product_name: None,
-            booth_url: None,
-            booth_price: None,
-            booth_thumbnail_path: None,
-            encoding_info: None,
-            created_at: None,
-            updated_at: None,
-            metadata: None,
+            file_size: 2048,
+            modified_time: 1609459300,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
+            product_id: None,
+            product_name: None,
+            author_name: None,
+            price: None,
+            description: None,
+            thumbnail_url: None,
+            product_url: None,
         };
 
         repo.insert(&file1).expect("Failed to insert file1");
@@ -523,18 +478,17 @@ mod tests {
             id: None,
             file_path: "/test/delete_me.zip".to_string(),
             file_name: "delete_me.zip".to_string(),
-            file_size: Some(1024),
-            file_hash: Some("delete_hash".to_string()),
-            booth_product_id: None,
-            booth_shop_name: Some("Test Shop".to_string()),
-            booth_product_name: Some("Test Product".to_string()),
-            booth_url: None,
-            booth_price: None,
-            booth_thumbnail_path: Some("/test/thumb.jpg".to_string()),
-            encoding_info: None,
-            created_at: None,
-            updated_at: None,
-            metadata: None,
+            file_size: 1024,
+            modified_time: 1609459200,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
+            product_id: None,
+            product_name: Some("Test Product".to_string()),
+            author_name: Some("Test Shop".to_string()),
+            price: None,
+            description: None,
+            thumbnail_url: Some("/test/thumb.jpg".to_string()),
+            product_url: None,
         };
 
         let file_id = repo.insert(&test_file).expect("Failed to insert file");

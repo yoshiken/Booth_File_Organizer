@@ -138,7 +138,19 @@ pub async fn update_file_booth_url_db(
         .lock()
         .map_err(|e| format!("Database lock error: {}", e))?;
 
-    let url_ref = booth_url.as_deref();
-    db.update_file_booth_url(file_id, url_ref)
+    // URLをproduct_urlフィールドとして更新
+    use crate::database::FileUpdateFields;
+    
+    let update_fields = FileUpdateFields {
+        product_id: None,
+        product_name: None,
+        author_name: None,
+        price: None,
+        description: None,
+        thumbnail_url: None,
+        product_url: booth_url,
+    };
+    
+    db.update_file(file_id, update_fields)
         .map_err(|e| format!("Failed to update file BOOTH URL: {}", e))
 }

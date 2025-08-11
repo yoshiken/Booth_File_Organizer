@@ -3,8 +3,7 @@
 
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
-use crate::database_refactored::Tag;
-use crate::config::tags;
+use crate::database::Tag;
 
 /// タグ操作の責務を持つRepository trait
 pub trait TagRepository {
@@ -32,13 +31,10 @@ impl<'a> SqliteTagRepository<'a> {
 impl<'a> TagRepository for SqliteTagRepository<'a> {
     fn insert(&self, tag: &Tag) -> Result<i64> {
         let _id = self.conn.execute(
-            "INSERT INTO tags (name, color, category, parent_tag_id, usage_count, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+            "INSERT INTO tags (name, usage_count)
+             VALUES (?1, ?2)",
             params![
                 tag.name,
-                tag.color,
-                tag.category,
-                tag.parent_tag_id,
                 tag.usage_count,
             ],
         )?;
@@ -48,7 +44,7 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
 
     fn find_by_name(&self, name: &str) -> Result<Option<Tag>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, color, category, parent_tag_id, usage_count, created_at
+            "SELECT id, name, usage_count, created_at, updated_at
              FROM tags WHERE name = ?1"
         )?;
 
@@ -56,11 +52,9 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
             Ok(Tag {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                color: row.get(2)?,
-                category: row.get(3)?,
-                parent_tag_id: row.get(4)?,
-                usage_count: row.get(5)?,
-                created_at: row.get(6)?,
+                usage_count: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         }).optional()?;
 
@@ -69,7 +63,7 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
 
     fn find_all(&self) -> Result<Vec<Tag>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, color, category, parent_tag_id, usage_count, created_at
+            "SELECT id, name, usage_count, created_at, updated_at
              FROM tags ORDER BY usage_count DESC, name ASC"
         )?;
 
@@ -77,11 +71,9 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
             Ok(Tag {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                color: row.get(2)?,
-                category: row.get(3)?,
-                parent_tag_id: row.get(4)?,
-                usage_count: row.get(5)?,
-                created_at: row.get(6)?,
+                usage_count: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         })?;
 
@@ -92,7 +84,7 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
         Ok(tags)
     }
 
-    fn get_or_create(&self, name: &str, color: Option<&str>) -> Result<Tag> {
+    fn get_or_create(&self, name: &str, _color: Option<&str>) -> Result<Tag> {
         // 空文字列や空白のみのタグ名は許可しない
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("タグ名は空にできません"));
@@ -107,11 +99,9 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
         let new_tag = Tag {
             id: None,
             name: name.to_string(),
-            color: color.unwrap_or(tags::ALTERNATIVE_DEFAULT_COLOR).to_string(), // デフォルトカラー
-            category: None,
-            parent_tag_id: None,
             usage_count: 0,
-            created_at: None,
+            created_at: "".to_string(),
+            updated_at: "".to_string(),
         };
 
         let _tag_id = self.insert(&new_tag)?;
@@ -173,12 +163,12 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
         let query = if sort_by == "usage_count" && sort_order == "DESC" {
             // デフォルトのソート順序の場合、セカンダリソートにnameを追加
             format!(
-                "SELECT id, name, color, category, parent_tag_id, usage_count, created_at
+                "SELECT id, name, usage_count, created_at, updated_at
                  FROM tags ORDER BY usage_count DESC, name ASC LIMIT ? OFFSET ?"
             )
         } else {
             format!(
-                "SELECT id, name, color, category, parent_tag_id, usage_count, created_at
+                "SELECT id, name, usage_count, created_at, updated_at
                  FROM tags ORDER BY {} {} LIMIT ? OFFSET ?",
                 sort_by, sort_order
             )
@@ -189,11 +179,9 @@ impl<'a> TagRepository for SqliteTagRepository<'a> {
             Ok(Tag {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                color: row.get(2)?,
-                category: row.get(3)?,
-                parent_tag_id: row.get(4)?,
-                usage_count: row.get(5)?,
-                created_at: row.get(6)?,
+                usage_count: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         })?;
 
@@ -221,13 +209,10 @@ mod tests {
         conn.execute(
             "CREATE TABLE tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                color TEXT NOT NULL,
-                category TEXT,
-                parent_tag_id INTEGER,
-                usage_count INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT,
-                FOREIGN KEY (parent_tag_id) REFERENCES tags(id)
+                name TEXT UNIQUE NOT NULL,
+                usage_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )",
             [],
         ).unwrap();
@@ -235,11 +220,12 @@ mod tests {
         // file_tags テーブルも作成（recalculate_usage_count テスト用）
         conn.execute(
             "CREATE TABLE file_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_id INTEGER NOT NULL,
                 tag_id INTEGER NOT NULL,
-                added_at TEXT DEFAULT (datetime('now')),
-                PRIMARY KEY (file_id, tag_id),
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+                UNIQUE(file_id, tag_id)
             )",
             [],
         ).unwrap();
@@ -255,11 +241,9 @@ mod tests {
         let test_tag = Tag {
             id: None,
             name: "VRChat".to_string(),
-            color: "#e74c3c".to_string(),
-            category: Some("Platform".to_string()),
-            parent_tag_id: None,
             usage_count: 0,
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         // Insert test
@@ -272,8 +256,6 @@ mod tests {
         
         let tag = retrieved_tag.unwrap();
         assert_eq!(tag.name, "VRChat");
-        assert_eq!(tag.color, "#e74c3c");
-        assert_eq!(tag.category, Some("Platform".to_string()));
         assert_eq!(tag.usage_count, 0);
     }
 
@@ -290,21 +272,17 @@ mod tests {
         let tag1 = Tag {
             id: None,
             name: "Unity".to_string(),
-            color: "#3498db".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 5,
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         let tag2 = Tag {
             id: None,
             name: "Blender".to_string(),
-            color: "#f39c12".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 3,
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         repo.insert(&tag1).expect("Failed to insert tag1");
@@ -326,11 +304,9 @@ mod tests {
         let original_tag = Tag {
             id: None,
             name: "Avatar".to_string(),
-            color: "#9b59b6".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 1,
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         repo.insert(&original_tag).expect("Failed to insert tag");
@@ -340,7 +316,6 @@ mod tests {
             .expect("Failed to get or create tag");
         
         assert_eq!(retrieved_tag.name, "Avatar");
-        assert_eq!(retrieved_tag.color, "#9b59b6"); // Original color, not the new one
         assert_eq!(retrieved_tag.usage_count, 1);
     }
 
@@ -354,7 +329,6 @@ mod tests {
             .expect("Failed to get or create tag");
         
         assert_eq!(new_tag.name, "NewTag");
-        assert_eq!(new_tag.color, "#custom_color");
         assert_eq!(new_tag.usage_count, 0);
 
         // Should be able to find it now
@@ -372,7 +346,6 @@ mod tests {
             .expect("Failed to get or create tag");
         
         assert_eq!(new_tag.name, "DefaultColorTag");
-        assert_eq!(new_tag.color, "#3498db"); // Default color
     }
 
     #[test]
@@ -384,21 +357,17 @@ mod tests {
         let tag1 = Tag {
             id: None,
             name: "Tag1".to_string(),
-            color: "#3498db".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 100, // Wrong count
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         let tag2 = Tag {
             id: None,
             name: "Tag2".to_string(),
-            color: "#e74c3c".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 200, // Wrong count
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         let tag1_id = repo.insert(&tag1).expect("Failed to insert tag1");
@@ -431,21 +400,17 @@ mod tests {
         let tag1 = Tag {
             id: None,
             name: "WillBeUsed".to_string(),
-            color: "#3498db".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 100, // Wrong count, will be corrected
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         let tag2 = Tag {
             id: None,
             name: "WillBeDeleted".to_string(),
-            color: "#e74c3c".to_string(),
-            category: None,
-            parent_tag_id: None,
             usage_count: 200, // Wrong count, will be set to 0 and deleted
-            created_at: None,
+            created_at: "2021-01-01T00:00:00Z".to_string(),
+            updated_at: "2021-01-01T00:00:00Z".to_string(),
         };
 
         let tag1_id = repo.insert(&tag1).expect("Failed to insert tag1");

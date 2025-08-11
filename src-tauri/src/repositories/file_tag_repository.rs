@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
-use crate::database_refactored::{FileRecord, FileWithTags, Tag};
+use crate::database::{FileRecord, FileWithTags, Tag};
 
 /// ファイル-タグ関連操作の責務を持つRepository trait
 pub trait FileTagRepository {
@@ -36,8 +36,8 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
     fn add_tag_to_file(&self, file_id: i64, tag_id: i64) -> Result<()> {
         // ファイル-タグ関連を追加
         self.conn.execute(
-            "INSERT OR IGNORE INTO file_tags (file_id, tag_id, added_at)
-             VALUES (?1, ?2, datetime('now'))",
+            "INSERT OR IGNORE INTO file_tags (file_id, tag_id)
+             VALUES (?1, ?2)",
             params![file_id, tag_id],
         )?;
 
@@ -82,7 +82,7 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
     }
     fn get_tags_for_file(&self, file_id: i64) -> Result<Vec<Tag>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.name, t.color, t.category, t.parent_tag_id, t.usage_count, t.created_at
+            "SELECT t.id, t.name, t.usage_count, t.created_at, t.updated_at
              FROM tags t
              INNER JOIN file_tags ft ON t.id = ft.tag_id
              WHERE ft.file_id = ?1
@@ -93,11 +93,9 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
             Ok(Tag {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                color: row.get(2)?,
-                category: row.get(3)?,
-                parent_tag_id: row.get(4)?,
-                usage_count: row.get(5)?,
-                created_at: row.get(6)?,
+                usage_count: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         })?;
 
@@ -111,9 +109,9 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
     fn get_files_with_tags(&self) -> Result<Vec<FileWithTags>> {
         // 全ファイルを取得
         let mut file_stmt = self.conn.prepare(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files ORDER BY created_at DESC"
         )?;
 
@@ -123,17 +121,16 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -156,9 +153,9 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
 
         let placeholders: Vec<String> = file_ids.iter().map(|_| "?".to_string()).collect();
         let query = format!(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files 
              WHERE id IN ({})
              ORDER BY created_at DESC",
@@ -174,17 +171,16 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -208,8 +204,8 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
         for file_id in file_ids {
             // 重複をチェックしながら追加
             let affected_rows = tx.execute(
-                "INSERT OR IGNORE INTO file_tags (file_id, tag_id, added_at) 
-                 VALUES (?1, ?2, datetime('now'))",
+                "INSERT OR IGNORE INTO file_tags (file_id, tag_id) 
+                 VALUES (?1, ?2)",
                 params![file_id, tag_id],
             )?;
             
@@ -263,7 +259,7 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
         let offset = (page.saturating_sub(1)) * page_size;
 
         // 検証: sort_byは許可されたカラムのみ
-        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "booth_shop_name", "booth_product_name"];
+        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "author_name", "product_name"];
         if !allowed_columns.contains(&sort_by) {
             return Err(anyhow::anyhow!("Invalid sort_by column: {}", sort_by));
         }
@@ -284,9 +280,9 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
 
         // ページネーションされたファイルを取得
         let query = format!(
-            "SELECT id, file_path, file_name, file_size, file_hash, booth_product_id,
-                    booth_shop_name, booth_product_name, booth_url, booth_price,
-                    booth_thumbnail_path, encoding_info, created_at, updated_at, metadata
+            "SELECT id, file_path, file_name, file_size, modified_time,
+                    created_at, updated_at, product_id, product_name,
+                    author_name, price, description, thumbnail_url, product_url
              FROM files ORDER BY {} {} LIMIT ? OFFSET ?",
             sort_by, sort_order
         );
@@ -298,17 +294,16 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -334,7 +329,7 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
         let offset = (page.saturating_sub(1)) * page_size;
 
         // 検証: sort_byは許可されたカラムのみ
-        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "booth_shop_name", "booth_product_name"];
+        let allowed_columns = ["id", "file_name", "file_size", "created_at", "updated_at", "author_name", "product_name"];
         if !allowed_columns.contains(&sort_by) {
             return Err(anyhow::anyhow!("Invalid sort_by column: {}", sort_by));
         }
@@ -366,9 +361,9 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
 
         // ページネーションされた検索結果を取得
         let search_query = format!(
-            "SELECT DISTINCT f.id, f.file_path, f.file_name, f.file_size, f.file_hash, f.booth_product_id,
-                    f.booth_shop_name, f.booth_product_name, f.booth_url, f.booth_price,
-                    f.booth_thumbnail_path, f.encoding_info, f.created_at, f.updated_at, f.metadata
+            "SELECT DISTINCT f.id, f.file_path, f.file_name, f.file_size, f.modified_time,
+                    f.created_at, f.updated_at, f.product_id, f.product_name,
+                    f.author_name, f.price, f.description, f.thumbnail_url, f.product_url
              FROM files f
              INNER JOIN file_tags ft ON f.id = ft.file_id
              INNER JOIN tags t ON ft.tag_id = t.id
@@ -388,17 +383,16 @@ impl<'a> FileTagRepository for SqliteFileTagRepository<'a> {
                 file_path: row.get(1)?,
                 file_name: row.get(2)?,
                 file_size: row.get(3)?,
-                file_hash: row.get(4)?,
-                booth_product_id: row.get(5)?,
-                booth_shop_name: row.get(6)?,
-                booth_product_name: row.get(7)?,
-                booth_url: row.get(8)?,
-                booth_price: row.get(9)?,
-                booth_thumbnail_path: row.get(10)?,
-                encoding_info: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata: row.get(14)?,
+                modified_time: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                product_id: row.get(7)?,
+                product_name: row.get(8)?,
+                author_name: row.get(9)?,
+                price: row.get(10)?,
+                description: row.get(11)?,
+                thumbnail_url: row.get(12)?,
+                product_url: row.get(13)?,
             })
         })?;
 
@@ -429,20 +423,19 @@ mod tests {
         conn.execute(
             "CREATE TABLE files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
+                file_path TEXT UNIQUE NOT NULL,
                 file_name TEXT NOT NULL,
-                file_size INTEGER,
-                file_hash TEXT,
-                booth_product_id INTEGER,
-                booth_shop_name TEXT,
-                booth_product_name TEXT,
-                booth_url TEXT,
-                booth_price INTEGER,
-                booth_thumbnail_path TEXT,
-                encoding_info TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                metadata TEXT
+                file_size INTEGER NOT NULL,
+                modified_time INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                product_id TEXT,
+                product_name TEXT,
+                author_name TEXT,
+                price INTEGER,
+                description TEXT,
+                thumbnail_url TEXT,
+                product_url TEXT
             )",
             [],
         ).unwrap();
@@ -450,25 +443,23 @@ mod tests {
         conn.execute(
             "CREATE TABLE tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                color TEXT NOT NULL,
-                category TEXT,
-                parent_tag_id INTEGER,
-                usage_count INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT,
-                FOREIGN KEY (parent_tag_id) REFERENCES tags(id)
+                name TEXT UNIQUE NOT NULL,
+                usage_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )",
             [],
         ).unwrap();
 
         conn.execute(
             "CREATE TABLE file_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_id INTEGER NOT NULL,
                 tag_id INTEGER NOT NULL,
-                added_at TEXT DEFAULT (datetime('now')),
-                PRIMARY KEY (file_id, tag_id),
-                FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags (id) ON DELETE CASCADE,
+                UNIQUE(file_id, tag_id)
             )",
             [],
         ).unwrap();
@@ -478,18 +469,18 @@ mod tests {
 
     fn create_test_file(conn: &Connection, name: &str) -> i64 {
         conn.execute(
-            "INSERT INTO files (file_path, file_name, file_size, created_at) 
-             VALUES (?1, ?2, 1024, datetime('now'))",
+            "INSERT INTO files (file_path, file_name, file_size, modified_time) 
+             VALUES (?1, ?2, 1024, 1609459200)",
             params![format!("/test/{}", name), name],
         ).unwrap();
         conn.last_insert_rowid()
     }
 
-    fn create_test_tag(conn: &Connection, name: &str, color: &str) -> i64 {
+    fn create_test_tag(conn: &Connection, name: &str, _color: &str) -> i64 {
         conn.execute(
-            "INSERT INTO tags (name, color, usage_count, created_at) 
-             VALUES (?1, ?2, 0, datetime('now'))",
-            params![name, color],
+            "INSERT INTO tags (name, usage_count) 
+             VALUES (?1, 0)",
+            params![name],
         ).unwrap();
         conn.last_insert_rowid()
     }
@@ -512,16 +503,14 @@ mod tests {
 
         // Verify usage count increased
         let updated_tag: Tag = conn.query_row(
-            "SELECT id, name, color, category, parent_tag_id, usage_count, created_at FROM tags WHERE id = ?1",
+            "SELECT id, name, usage_count, created_at, updated_at FROM tags WHERE id = ?1",
             [tag_id],
             |row| Ok(Tag {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                color: row.get(2)?,
-                category: row.get(3)?,
-                parent_tag_id: row.get(4)?,
-                usage_count: row.get(5)?,
-                created_at: row.get(6)?,
+                usage_count: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         ).expect("Failed to get updated tag");
         assert_eq!(updated_tag.usage_count, 1);

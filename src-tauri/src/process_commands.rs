@@ -1,4 +1,5 @@
-use crate::{AppState, FileSelectResult, ProcessResult, FileRecord, process_zip_internal, AppError};
+use crate::{AppState, FileSelectResult, ProcessResult, process_zip_internal, AppError};
+use crate::database::FileRecord;
 use log::error;
 use std::path::Path;
 
@@ -69,7 +70,20 @@ pub async fn process_zip_file(
 
                 let file_size = std::fs::metadata(&zip_path)
                     .map(|meta| meta.len() as i64)
-                    .ok();
+                    .unwrap_or(0);
+
+                let modified_time = std::fs::metadata(&zip_path)
+                    .map(|meta| meta.modified()
+                        .unwrap_or_else(|_| std::time::SystemTime::now())
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64)
+                    .unwrap_or_else(|_| {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64
+                    });
 
                 let db = state
                     .db
@@ -80,29 +94,26 @@ pub async fn process_zip_file(
                     file_path: res.output_path.clone().unwrap_or_else(|| zip_path.clone()),
                     file_name,
                     file_size,
-                    file_hash: None,
-                    booth_product_id: None,
-                    booth_shop_name: res.shop_name.clone(),
-                    booth_product_name: res.product_name.clone(),
-                    booth_url: booth_url.clone(),
-                    booth_price: None,
-                    booth_thumbnail_path: None,
-                    encoding_info: None,
-                    created_at: None,
-                    updated_at: None,
-                    metadata: None,
+                    modified_time,
+                    created_at: chrono::Utc::now().to_rfc3339(),
+                    updated_at: chrono::Utc::now().to_rfc3339(),
+                    product_id: None,
+                    product_name: res.product_name.clone(),
+                    author_name: res.shop_name.clone(), // shop_name を author_name として使用
+                    price: None,
+                    description: None,
+                    thumbnail_url: None,
+                    product_url: booth_url.clone(),
                 };
 
-                match db.insert_file(&file_record) {
+                match db.add_file(file_record) {
                     Ok(file_id) => {
                         // ファイル保存後、タグを追加
                         if let Some(tag_names) = &tags {
                             for tag_name in tag_names {
                                 if !tag_name.trim().is_empty() {
-                                    if let Ok(tag) = db.get_or_create_tag(tag_name.trim(), None) {
-                                        if let Some(tag_id) = tag.id {
-                                            let _ = db.add_tag_to_file(file_id, tag_id);
-                                        }
+                                    if let Ok(tag_id) = db.add_tag(tag_name.trim()) {
+                                        let _ = db.add_file_tag(file_id, tag_id);
                                     }
                                 }
                             }

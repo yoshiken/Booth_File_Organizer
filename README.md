@@ -220,7 +220,7 @@ booth-organizer/
 │   │   ├── paginated_commands.rs # ページネーション機能
 │   │   ├── errors.rs           # 統一エラーハンドリング
 │   │   ├── config.rs           # 設定値中央管理
-│   │   ├── database_refactored.rs # Database ファサード
+│   │   ├── database.rs # Database ファサード
 │   │   ├── repositories/       # Repository Pattern実装
 │   │   │   ├── mod.rs
 │   │   │   ├── file_repository.rs    # ファイル操作

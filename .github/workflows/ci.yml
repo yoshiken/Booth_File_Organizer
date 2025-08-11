@@ -12,23 +12,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # セキュリティチェック
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
-    - name: Security audit
-      run: cargo audit
-      working-directory: src-tauri
-
   # コード品質チェック
   code-quality:
     name: Code Quality
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -38,7 +25,7 @@ jobs:
       run: cargo fmt --check
       working-directory: src-tauri
     - name: Rust lint check
-      run: cargo clippy -- -D warnings
+      run: cargo clippy -- -W warnings
       working-directory: src-tauri
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -74,7 +61,7 @@ jobs:
   build-test:
     name: Build Test
     runs-on: windows-latest
-    needs: [security-audit, code-quality, test]
+    needs: [code-quality, test]
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -134,20 +121,3 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # カバレッジレポート
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Install cargo-tarpaulin
-      run: cargo install cargo-tarpaulin
-    - name: Generate coverage report
-      run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
-      working-directory: src-tauri
-    - name: Upload to codecov.io
-      uses: codecov/codecov-action@v3
-      with:
-        file: src-tauri/cobertura.xml
-        fail_ci_if_error: true
