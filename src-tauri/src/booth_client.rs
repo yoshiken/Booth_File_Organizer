@@ -1,3 +1,4 @@
+use crate::config::booth;
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -6,7 +7,6 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::sleep;
 use url::Url;
-use crate::config::booth;
 
 #[derive(Error, Debug)]
 pub enum BoothClientError {
@@ -219,13 +219,13 @@ impl BoothClient {
     pub async fn get_product_info_json(&self, booth_url: &str) -> Result<BoothProductInfo> {
         self.get_product_info_json_internal(booth_url).await
     }
-    
+
     #[cfg(not(test))]
     #[allow(dead_code)] // JSON API用の代替メソッド（将来使用予定）
     async fn get_product_info_json(&self, booth_url: &str) -> Result<BoothProductInfo> {
         self.get_product_info_json_internal(booth_url).await
     }
-    
+
     async fn get_product_info_json_internal(&self, booth_url: &str) -> Result<BoothProductInfo> {
         // URLをJSON用に変換 (末尾に.jsonを追加)
         let _parsed_url = Url::parse(booth_url)?; // URL検証のため
@@ -237,7 +237,7 @@ impl BoothClient {
 
         // JSONデータを取得
         let json_content = self.fetch_with_retry(&json_url).await?;
-        
+
         // JSONをパース
         let json_response: BoothJsonResponse = serde_json::from_str(&json_content)
             .map_err(|e| anyhow!("Failed to parse JSON response: {}", e))?;
@@ -245,9 +245,11 @@ impl BoothClient {
         // JSONデータを既存のBoothProductInfo構造体にマッピング
         let price = self.parse_price_from_string(&json_response.price);
         let is_free = price.is_none() || price == Some(0);
-        
+
         // サムネイルURLを取得（resizedを優先、なければoriginal）
-        let thumbnail_url = json_response.images.first()
+        let thumbnail_url = json_response
+            .images
+            .first()
             .and_then(|img| img.resized.clone().or_else(|| img.original.clone()));
 
         Ok(BoothProductInfo {
@@ -258,7 +260,11 @@ impl BoothClient {
             description: json_response.description.clone(),
             thumbnail_url,
             is_free,
-            tags: json_response.tags.iter().map(|tag| tag.name.clone()).collect(),
+            tags: json_response
+                .tags
+                .iter()
+                .map(|tag| tag.name.clone())
+                .collect(),
             booth_url: booth_url.to_string(),
         })
     }
@@ -272,11 +278,11 @@ impl BoothClient {
             .replace(" ", "")
             .trim()
             .to_string();
-        
+
         if cleaned.is_empty() || cleaned == "0" {
             return None;
         }
-        
+
         cleaned.parse::<i64>().ok()
     }
 }
@@ -323,7 +329,7 @@ impl HtmlParser for DefaultBoothParser {
         let selectors = [
             "h2.item-name",
             "h1.item-name",
-            "h1.product-name", 
+            "h1.product-name",
             ".item-name",
             ".product-name",
             "[data-tracking='click_item_name']",
@@ -332,17 +338,18 @@ impl HtmlParser for DefaultBoothParser {
 
         // 先にショップ名を取得して比較用に保持
         let shop_name = self.parse_shop_name(document);
-        
+
         for selector_str in &selectors {
             if let Ok(selector) = Selector::parse(selector_str) {
                 if let Some(element) = document.select(&selector).next() {
                     // テキストノードを取得（改行や空白も保持）
                     let text_nodes: Vec<&str> = element.text().collect();
                     let text = text_nodes.join("").trim().to_string();
-                    
-                    if !text.is_empty() 
-                        && !text.to_lowercase().contains("booth") 
-                        && Some(&text) != shop_name.as_ref() // ショップ名と異なることを確認
+
+                    if !text.is_empty()
+                        && !text.to_lowercase().contains("booth")
+                        && Some(&text) != shop_name.as_ref()
+                    // ショップ名と異なることを確認
                     {
                         return Some(text);
                     }
@@ -358,7 +365,7 @@ impl HtmlParser for DefaultBoothParser {
             ".variation-price",
             ".page-wrap .price",
             ".price-value",
-            ".item-price", 
+            ".item-price",
             ".product-price .price",
             ".price",
             "[data-tracking*='price']",
@@ -411,7 +418,7 @@ impl HtmlParser for DefaultBoothParser {
             "img.thumb",
             "meta[property='og:image']",
             ".item-image img",
-            ".product-image img", 
+            ".product-image img",
             ".main-image img",
             "img.item-thumbnail",
         ];
@@ -452,17 +459,14 @@ impl HtmlParser for DefaultBoothParser {
             "#js-item-tag-list .typography-12",
             "#js-item-tag-list .text-white",
             "#js-item-tag-list .font-bold",
-            
             // より具体的なタグテキスト要素
             "#js-item-tag-list div.absolute.box-border",
             "#js-item-tag-list div.typography-12",
             "#js-item-tag-list div[style*='text-shadow']",
-            
             // 念のため元のクラスセレクターも
             ".js-item-tag-list",
             ".js-item-tag-list div",
             ".js-item-tag-list a",
-            
             // 一般的なタグセレクター
             ".tags .tag",
             ".tags a",
@@ -474,30 +478,112 @@ impl HtmlParser for DefaultBoothParser {
                 let elements: Vec<_> = document.select(&selector).collect();
                 for element in elements.iter() {
                     let tag_text = element.text().collect::<String>().trim().to_string();
-                    
+
                     // 基本的な長さチェック（2文字以上、50文字以下）
                     if tag_text.len() >= 2 && tag_text.len() <= 50 && !tag_text.is_empty() {
                         // UIボタンやナビゲーション要素を除外
                         let excluded_texts = [
-                            "ポストする", "シェア", "Share", "投稿", "Tweet", "Facebook",
-                            "ログイン", "Login", "サインイン", "Sign in", "登録", "Register",
-                            "カート", "Cart", "購入", "Buy", "決済", "Payment", "支払い",
-                            "フォロー", "Follow", "お気に入り", "Favorite", "いいね", "Like",
-                            "戻る", "Back", "次へ", "Next", "前へ", "Previous", "もっと見る", "More",
-                            "閉じる", "Close", "開く", "Open", "表示", "View", "非表示", "Hide",
-                            "メニュー", "Menu", "検索", "Search", "絞り込み", "Filter",
-                            "並び替え", "Sort", "設定", "Settings", "ヘルプ", "Help",
-                            "ホーム", "Home", "マイページ", "My page", "プロフィール", "Profile",
-                            "通知", "Notification", "メッセージ", "Message", "お知らせ", "News",
-                            "利用規約", "Terms", "プライバシー", "Privacy", "規約", "Policy",
-                            "コピー", "Copy", "ダウンロード", "Download", "アップロード", "Upload",
-                            "編集", "Edit", "削除", "Delete", "保存", "Save", "キャンセル", "Cancel",
-                            "確認", "Confirm", "OK", "はい", "Yes", "いいえ", "No",
-                            "商品を見る", "詳細を見る", "もっと読む", "続きを読む",
+                            "ポストする",
+                            "シェア",
+                            "Share",
+                            "投稿",
+                            "Tweet",
+                            "Facebook",
+                            "ログイン",
+                            "Login",
+                            "サインイン",
+                            "Sign in",
+                            "登録",
+                            "Register",
+                            "カート",
+                            "Cart",
+                            "購入",
+                            "Buy",
+                            "決済",
+                            "Payment",
+                            "支払い",
+                            "フォロー",
+                            "Follow",
+                            "お気に入り",
+                            "Favorite",
+                            "いいね",
+                            "Like",
+                            "戻る",
+                            "Back",
+                            "次へ",
+                            "Next",
+                            "前へ",
+                            "Previous",
+                            "もっと見る",
+                            "More",
+                            "閉じる",
+                            "Close",
+                            "開く",
+                            "Open",
+                            "表示",
+                            "View",
+                            "非表示",
+                            "Hide",
+                            "メニュー",
+                            "Menu",
+                            "検索",
+                            "Search",
+                            "絞り込み",
+                            "Filter",
+                            "並び替え",
+                            "Sort",
+                            "設定",
+                            "Settings",
+                            "ヘルプ",
+                            "Help",
+                            "ホーム",
+                            "Home",
+                            "マイページ",
+                            "My page",
+                            "プロフィール",
+                            "Profile",
+                            "通知",
+                            "Notification",
+                            "メッセージ",
+                            "Message",
+                            "お知らせ",
+                            "News",
+                            "利用規約",
+                            "Terms",
+                            "プライバシー",
+                            "Privacy",
+                            "規約",
+                            "Policy",
+                            "コピー",
+                            "Copy",
+                            "ダウンロード",
+                            "Download",
+                            "アップロード",
+                            "Upload",
+                            "編集",
+                            "Edit",
+                            "削除",
+                            "Delete",
+                            "保存",
+                            "Save",
+                            "キャンセル",
+                            "Cancel",
+                            "確認",
+                            "Confirm",
+                            "OK",
+                            "はい",
+                            "Yes",
+                            "いいえ",
+                            "No",
+                            "商品を見る",
+                            "詳細を見る",
+                            "もっと読む",
+                            "続きを読む",
                         ];
-                        
-                        let is_excluded = excluded_texts.iter().any(|&excluded| tag_text == excluded);
-                        
+
+                        let is_excluded =
+                            excluded_texts.iter().any(|&excluded| tag_text == excluded);
+
                         if !is_excluded && !tags.contains(&tag_text) {
                             tags.push(tag_text);
                         }
@@ -510,7 +596,6 @@ impl HtmlParser for DefaultBoothParser {
     }
 }
 
-
 impl BoothClient {
     pub async fn get_product_info(&self, booth_url: &str) -> Result<BoothProductInfo> {
         // まずJSON APIを試す（高速・確実）
@@ -521,7 +606,9 @@ impl BoothClient {
             }
             Err(json_error) => {
                 // JSON APIが失敗した場合はHTML解析にフォールバック
-                log::warn!("JSON API failed, falling back to HTML parsing: {}", json_error);
+                log::warn!(
+                    "JSON API failed, falling back to HTML parsing: {json_error}"
+                );
                 self.get_product_info_with_parser(&DefaultBoothParser, booth_url)
                     .await
             }
@@ -618,12 +705,12 @@ impl BoothClient {
         if let Ok(title_selector) = Selector::parse("title") {
             if let Some(title_element) = document.select(&title_selector).next() {
                 let title = title_element.text().collect::<String>();
-                
+
                 // BOOTHタイトルの形式を考慮して商品名を抽出
                 // 形式: "商品名 - ショップ名 - BOOTH"
                 let clean_title = title.replace(" - BOOTH", "");
                 let parts: Vec<&str> = clean_title.split(" - ").collect();
-                
+
                 // 最後の部分がショップ名の可能性が高いので、それを除外
                 if parts.len() >= 2 {
                     // 最後の部分（ショップ名）を除いて結合
@@ -753,7 +840,6 @@ mod tests {
     async fn test_booth_client_creation() {
         let _client = BoothClient::new();
         // Just test that client creation doesn't panic
-        assert!(true);
     }
 
     #[test]
@@ -777,11 +863,10 @@ mod tests {
         let product_name = client.extract_product_name(&html_with_emoji);
         assert!(product_name.is_ok());
         let name = product_name.unwrap();
-        
+
         // 商品名が期待される内容を含んでいることを確認
         assert!(name.contains("2024年第5弾『YUKATA 祭囃子 - Matsuribayashi - 』"));
-        
-        
+
         // 期待される完全な商品名
         assert_eq!(name, "2024年第5弾『YUKATA 祭囃子 - Matsuribayashi - 』💜");
     }
@@ -806,12 +891,11 @@ mod tests {
         let thumbnail_url = client.extract_thumbnail_url(&html_with_thumbnail);
         assert!(thumbnail_url.is_some());
         let url = thumbnail_url.unwrap();
-        
+
         // サムネイルURLが正しく取得されているかテスト
         assert!(url.contains("booth.pximg.net"));
         assert!(url.contains("5840141"));
-        
-        
+
         // 期待されるURL
         assert_eq!(url, "https://booth.pximg.net/87b70515-e32e-4a2e-bf41-317cf2c2177c/i/5840141/4a7ece8b-4304-487d-8c5c-f09047b1efc0_base_resized.jpg");
     }
@@ -820,16 +904,15 @@ mod tests {
     async fn test_real_booth_product_fetch() {
         let client = BoothClient::new();
         let test_url = "https://extension.booth.pm/items/5840141";
-        
+
         // 実際のBOOTHページから商品情報を取得
         match client.get_product_info(test_url).await {
             Ok(product_info) => {
-                
                 // 基本的な検証
                 assert!(!product_info.shop_name.is_empty());
                 assert!(!product_info.product_name.is_empty());
                 assert!(product_info.product_name.contains("YUKATA"));
-                
+
                 if let Some(thumbnail) = &product_info.thumbnail_url {
                     assert!(thumbnail.contains("booth.pximg.net"));
                 }
@@ -954,38 +1037,73 @@ mod tests {
         );
 
         let tags = client.extract_tags(&milltina_html);
-        
+
         // 期待されるタグが含まれているかチェック
-        assert!(tags.contains(&"ミルティナ".to_string()), "「ミルティナ」タグが抽出されていません");
-        assert!(tags.contains(&"3Dモデル".to_string()), "「3Dモデル」タグが抽出されていません");
-        assert!(tags.contains(&"オリジナル".to_string()), "「オリジナル」タグが抽出されていません");
-        assert!(tags.contains(&"VRChat".to_string()), "「VRChat」タグが抽出されていません");
-        assert!(tags.contains(&"VRC想定モデル".to_string()), "「VRC想定モデル」タグが抽出されていません");
-        assert!(tags.contains(&"3Dキャラクター".to_string()), "「3Dキャラクター」タグが抽出されていません");
-        
+        assert!(
+            tags.contains(&"ミルティナ".to_string()),
+            "「ミルティナ」タグが抽出されていません"
+        );
+        assert!(
+            tags.contains(&"3Dモデル".to_string()),
+            "「3Dモデル」タグが抽出されていません"
+        );
+        assert!(
+            tags.contains(&"オリジナル".to_string()),
+            "「オリジナル」タグが抽出されていません"
+        );
+        assert!(
+            tags.contains(&"VRChat".to_string()),
+            "「VRChat」タグが抽出されていません"
+        );
+        assert!(
+            tags.contains(&"VRC想定モデル".to_string()),
+            "「VRC想定モデル」タグが抽出されていません"
+        );
+        assert!(
+            tags.contains(&"3Dキャラクター".to_string()),
+            "「3Dキャラクター」タグが抽出されていません"
+        );
+
         // 不要なタグが含まれていないかチェック
-        assert!(!tags.contains(&"Unity".to_string()), "不要な「Unity」タグが抽出されています");
-        assert!(!tags.contains(&"Blender".to_string()), "不要な「Blender」タグが抽出されています");
-        assert!(!tags.contains(&"PhysBone".to_string()), "不要な「PhysBone」タグが抽出されています");
+        assert!(
+            !tags.contains(&"Unity".to_string()),
+            "不要な「Unity」タグが抽出されています"
+        );
+        assert!(
+            !tags.contains(&"Blender".to_string()),
+            "不要な「Blender」タグが抽出されています"
+        );
+        assert!(
+            !tags.contains(&"PhysBone".to_string()),
+            "不要な「PhysBone」タグが抽出されています"
+        );
     }
 
     #[tokio::test]
     async fn test_real_booth_url() {
         let client = BoothClient::new();
-        
+
         // 実際のミルティナのBOOTHページでテスト
-        match client.get_product_info("https://dolosart.booth.pm/items/6538026").await {
+        match client
+            .get_product_info("https://dolosart.booth.pm/items/6538026")
+            .await
+        {
             Ok(info) => {
-                
                 // 最低限VRChatタグは抽出されるはず
                 assert!(!info.tags.is_empty(), "タグが全く抽出されていません");
-                
+
                 // VRChatタグは確実に抽出される
-                assert!(info.tags.contains(&"VRChat".to_string()), "VRChatタグが抽出されていません");
-                
+                assert!(
+                    info.tags.contains(&"VRChat".to_string()),
+                    "VRChatタグが抽出されていません"
+                );
+
                 // 期待するタグの一部が抽出されていればOK（実際のHTMLに依存するため）
                 let expected_tags = ["3Dキャラクター", "3Dモデル", "VRC想定モデル", "ミルティナ"];
-                let _found_count = expected_tags.iter().filter(|&tag| info.tags.contains(&tag.to_string())).count();
+                let _found_count = expected_tags
+                    .iter()
+                    .filter(|&tag| info.tags.contains(&tag.to_string()))
+                    .count();
             }
             Err(e) => {
                 println!("BOOTH URLの取得でエラー: {:?}", e);
@@ -1002,16 +1120,18 @@ mod tests {
     #[tokio::test]
     async fn test_json_api_direct() {
         let client = BoothClient::new();
-        
+
         // JSON APIを直接テスト
-        match client.get_product_info_json("https://booth.pm/ja/items/3681219").await {
+        match client
+            .get_product_info_json("https://booth.pm/ja/items/3681219")
+            .await
+        {
             Ok(info) => {
-                
                 // 基本的な検証
                 assert!(info.product_id.is_some(), "商品IDが取得できていません");
                 assert!(!info.product_name.is_empty(), "商品名が空です");
                 assert!(!info.shop_name.is_empty(), "ショップ名が空です");
-                
+
                 // JSON APIでは価格が適切に取得できるはず
                 assert!(info.price.is_some(), "価格が取得できていません");
             }
@@ -1029,17 +1149,16 @@ mod tests {
     #[tokio::test]
     async fn test_json_api_with_fallback() {
         let client = BoothClient::new();
-        
+
         // 実際のBOOTH URLでJSON API → HTMLフォールバックをテスト
         let test_url = "https://extension.booth.pm/items/5840141";
-        
+
         match client.get_product_info(test_url).await {
             Ok(info) => {
-                
                 // 基本的な検証
                 assert!(!info.product_name.is_empty());
                 assert!(!info.shop_name.is_empty());
-                
+
                 // JSONまたはHTMLのいずれかで取得できていればOK
                 assert!(info.product_id.is_some() || !info.tags.is_empty());
             }

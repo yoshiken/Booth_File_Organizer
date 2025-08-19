@@ -1,5 +1,5 @@
-use crate::{AppState, booth_client::BoothProductInfo, sanitize_folder_name};
 use crate::config::booth;
+use crate::{booth_client::BoothProductInfo, sanitize_folder_name, AppState};
 use std::path::PathBuf;
 
 // BOOTH URL検証コマンド（商品ページ専用）
@@ -9,26 +9,28 @@ pub async fn validate_booth_url(url: String) -> Result<bool, String> {
         Ok(parsed_url) => {
             let host = parsed_url.host_str().unwrap_or("");
             let path = parsed_url.path();
-            
+
             // BOOTHドメインをチェック
-            let is_booth_domain = host == booth::MAIN_DOMAIN || host.ends_with(booth::SUBDOMAIN_SUFFIX);
-            
+            let is_booth_domain =
+                host == booth::MAIN_DOMAIN || host.ends_with(booth::SUBDOMAIN_SUFFIX);
+
             if !is_booth_domain {
                 return Ok(false);
             }
-            
+
             // 商品ページのパスパターンをチェック（言語プレフィックス対応）
             // パターン: /items/[id] または /[lang]/items/[id]
             let path_segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-            
+
             let items_index = path_segments.iter().position(|&segment| segment == "items");
-            
+
             if let Some(items_idx) = items_index {
                 // "items"の次にセグメントがあることを確認
                 if items_idx + 1 < path_segments.len() {
                     let item_id = path_segments[items_idx + 1];
                     // 商品IDが数字かどうかをチェック
-                    let is_numeric_id = item_id.chars().all(|c| c.is_ascii_digit()) && !item_id.is_empty();
+                    let is_numeric_id =
+                        item_id.chars().all(|c| c.is_ascii_digit()) && !item_id.is_empty();
                     Ok(is_numeric_id)
                 } else {
                     Ok(false)
@@ -55,7 +57,7 @@ pub async fn fetch_booth_product_info(
             if product_info.shop_name.trim().is_empty() || product_info.product_name.trim().is_empty() {
                 return Err("商品情報が不完全です。正しい商品ページのURLを確認してください。".to_string());
             }
-            
+
             // 商品名が「ページが見つかりません」等のエラーメッセージでないかチェック
             let product_name_lower = product_info.product_name.to_lowercase();
             if product_name_lower.contains("not found") || 
@@ -64,10 +66,10 @@ pub async fn fetch_booth_product_info(
                product_name_lower.contains("エラー") {
                 return Err("商品ページが見つかりません。URLを確認してください。".to_string());
             }
-            
+
             Ok(product_info)
         }
-        Err(e) => Err(format!("BOOTH商品情報の取得に失敗しました: {} (購入ページやカートページではなく、商品ページのURLを入力してください)", e)),
+        Err(e) => Err(format!("BOOTH商品情報の取得に失敗しました: {e} (購入ページやカートページではなく、商品ページのURLを入力してください)")),
     }
 }
 
@@ -89,7 +91,7 @@ pub async fn download_booth_thumbnail(
 
     if !app_data_dir.exists() {
         std::fs::create_dir_all(&app_data_dir)
-            .map_err(|e| format!("サムネイルディレクトリの作成に失敗: {}", e))?;
+            .map_err(|e| format!("サムネイルディレクトリの作成に失敗: {e}"))?;
     }
 
     // ファイル名生成（安全な文字のみ）
@@ -107,7 +109,7 @@ pub async fn download_booth_thumbnail(
         "jpg"
     };
 
-    let filename = format!("{}_{}.{}", safe_shop, safe_product, extension);
+    let filename = format!("{safe_shop}_{safe_product}.{extension}");
     let file_path = app_data_dir.join(&filename);
 
     // 既に存在する場合はスキップ
@@ -119,11 +121,11 @@ pub async fn download_booth_thumbnail(
     match booth_client.download_thumbnail(&thumbnail_url).await {
         Ok(image_data) => {
             std::fs::write(&file_path, image_data)
-                .map_err(|e| format!("サムネイルの保存に失敗: {}", e))?;
+                .map_err(|e| format!("サムネイルの保存に失敗: {e}"))?;
 
             Ok(file_path.to_string_lossy().to_string())
         }
-        Err(e) => Err(format!("サムネイルのダウンロードに失敗: {}", e)),
+        Err(e) => Err(format!("サムネイルのダウンロードに失敗: {e}")),
     }
 }
 
@@ -136,11 +138,11 @@ pub async fn update_file_booth_url_db(
     let db = state
         .db
         .lock()
-        .map_err(|e| format!("Database lock error: {}", e))?;
+        .map_err(|e| format!("Database lock error: {e}"))?;
 
     // URLをproduct_urlフィールドとして更新
     use crate::database::FileUpdateFields;
-    
+
     let update_fields = FileUpdateFields {
         product_id: None,
         product_name: None,
@@ -150,7 +152,7 @@ pub async fn update_file_booth_url_db(
         thumbnail_url: None,
         product_url: booth_url,
     };
-    
+
     db.update_file(file_id, update_fields)
-        .map_err(|e| format!("Failed to update file BOOTH URL: {}", e))
+        .map_err(|e| format!("Failed to update file BOOTH URL: {e}"))
 }

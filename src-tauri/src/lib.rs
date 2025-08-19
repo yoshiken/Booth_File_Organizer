@@ -1,6 +1,6 @@
+use ::regex::Regex;
 use anyhow::{anyhow, Result};
 use encoding_rs::SHIFT_JIS;
-use ::regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufReader;
@@ -8,35 +8,34 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 // Log imports will be added as needed in individual files
 
-pub mod booth_client;
-pub mod errors;
-mod database;
-mod tag_validator;
-mod repositories;
 mod api_types;
-mod file_commands;
-mod tag_commands;
+pub mod booth_client;
 mod booth_commands;
-mod process_commands;
-mod system_commands;
-mod sync_commands;
 mod config;
+mod database;
+pub mod errors;
+mod file_commands;
+mod process_commands;
+mod sync_commands;
+mod system_commands;
+mod tag_commands;
+mod tag_validator;
 
-use booth_client::BoothClient;
-use database::{DatabaseRefactored, FileRecord, FileWithTags, Tag, FileUpdateFields, BatchStatistics};
-pub use errors::{AppError, AppResult};
 use crate::config::{app, files, regex};
+use booth_client::BoothClient;
+use database::Database;
+pub use errors::{AppError, AppResult};
 
 // アプリケーション状態管理
 pub struct AppState {
-    pub db: Arc<Mutex<DatabaseRefactored>>,
+    pub db: Arc<Mutex<Database>>,
     pub booth_client: Arc<BoothClient>,
 }
 
 impl AppState {
     pub fn new() -> Result<Self> {
         let app_data_dir = dirs::data_dir()
-            .or_else(|| dirs::home_dir())
+            .or_else(dirs::home_dir)
             .unwrap_or_else(|| PathBuf::from("."))
             .join(app::DATA_DIR_NAME);
 
@@ -46,7 +45,7 @@ impl AppState {
         }
 
         let db_path = app_data_dir.join(app::DATABASE_FILENAME);
-        let db = DatabaseRefactored::new(&db_path.to_string_lossy())?;
+        let db = Database::new(&db_path.to_string_lossy())?;
         let booth_client = BoothClient::new();
 
         Ok(AppState {
@@ -86,7 +85,7 @@ pub struct MissingFile {
     pub id: i64,
     pub file_name: String,
     pub file_path: String,
-    pub booth_shop_name: Option<String>, // author_name を使用
+    pub booth_shop_name: Option<String>,    // author_name を使用
     pub booth_product_name: Option<String>, // product_name を使用
 }
 
@@ -95,15 +94,6 @@ pub struct MissingFile {
 // Process/ZIP commands are now in process_commands.rs module
 
 // File operation commands are now in file_commands.rs module
-
-
-
-
-
-
-
-
-
 
 pub async fn process_zip_internal(
     zip_path: String,
@@ -115,9 +105,9 @@ pub async fn process_zip_internal(
 
     // zip ファイルの存在確認
     if !zip_path.exists() {
+        let path_display = zip_path.display();
         return Err(anyhow!(
-            "ZIPファイルが見つかりません: {}",
-            zip_path.display()
+            "ZIPファイルが見つかりません: {path_display}"
         ));
     }
 
@@ -179,7 +169,10 @@ pub async fn process_zip_internal(
 
     Ok(ProcessResult {
         success: true,
-        message: format!("{}個のファイルを展開しました", extracted_files.len()),
+        message: {
+            let count = extracted_files.len();
+            format!("{count}個のファイルを展開しました")
+        },
         shop_name,
         product_name,
         files_extracted: extracted_files,
@@ -206,9 +199,8 @@ pub fn extract_booth_info_fallback(url: &str) -> Result<(String, String)> {
     // BOOTH URLからショップ名を抽出（フォールバック）
     let regex = Regex::new(r"https://([^.]+)\.booth\.pm/items/(\d+)")
         .map_err(|e| anyhow!("正規表現の作成に失敗しました: {}", e))?;
-    
-    if let Some(captures) = regex.captures(url)
-    {
+
+    if let Some(captures) = regex.captures(url) {
         let shop_name = captures
             .get(regex::GROUP_1)
             .map(|m| m.as_str().to_string())
@@ -217,7 +209,7 @@ pub fn extract_booth_info_fallback(url: &str) -> Result<(String, String)> {
             .get(regex::GROUP_2)
             .ok_or_else(|| anyhow!("商品IDの抽出に失敗しました"))?
             .as_str();
-        let product_name = format!("product_{}", product_id);
+        let product_name = format!("product_{product_id}");
 
         Ok((shop_name, product_name))
     } else {
@@ -307,34 +299,17 @@ fn detect_and_convert_filename(raw_bytes: &[u8]) -> Result<String> {
     Ok(String::from_utf8_lossy(raw_bytes).to_string())
 }
 
-
-
 // BOOTH commands are now in booth_commands.rs module
-
-
-
 
 // Sync/statistics commands are now in sync_commands.rs module
 
-
-
 // Batch tag operations are now in tag_commands.rs module
-
-
-
-
-
-
-
-
-
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging
     env_logger::init();
-    
+
     // アプリケーション状態を初期化
     let app_state = AppState::new().expect("Failed to initialize application state");
 

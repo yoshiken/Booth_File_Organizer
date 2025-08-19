@@ -1,5 +1,5 @@
-use crate::{AppState, FileSelectResult, ProcessResult, process_zip_internal, AppError};
 use crate::database::FileRecord;
+use crate::{process_zip_internal, AppError, AppState, FileSelectResult, ProcessResult};
 use log::error;
 use std::path::Path;
 
@@ -15,13 +15,13 @@ pub async fn select_zip_files(app: tauri::AppHandle) -> Result<FileSelectResult,
         .set_title("BOOTHアーカイブファイルを選択")
         .pick_files(move |file_paths| {
             if let Err(e) = tx.send(file_paths) {
-                error!("Failed to send file paths: {}", e);
+                error!("Failed to send file paths: {e}");
             }
         });
 
     let files = rx
         .recv()
-        .map_err(|e| AppError::custom(format!("ファイル選択エラー: {}", e)).to_string())?;
+        .map_err(|e| AppError::custom(format!("ファイル選択エラー: {e}")).to_string())?;
 
     match files {
         Some(paths) => {
@@ -73,11 +73,13 @@ pub async fn process_zip_file(
                     .unwrap_or(0);
 
                 let modified_time = std::fs::metadata(&zip_path)
-                    .map(|meta| meta.modified()
-                        .unwrap_or_else(|_| std::time::SystemTime::now())
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64)
+                    .map(|meta| {
+                        meta.modified()
+                            .unwrap_or_else(|_| std::time::SystemTime::now())
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64
+                    })
                     .unwrap_or_else(|_| {
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -85,10 +87,9 @@ pub async fn process_zip_file(
                             .as_secs() as i64
                     });
 
-                let db = state
-                    .db
-                    .lock()
-                    .map_err(|e| AppError::database_lock(format!("Database lock error: {}", e)).to_string())?;
+                let db = state.db.lock().map_err(|e| {
+                    AppError::database_lock(format!("Database lock error: {e}")).to_string()
+                })?;
                 let file_record = FileRecord {
                     id: None,
                     file_path: res.output_path.clone().unwrap_or_else(|| zip_path.clone()),
@@ -118,14 +119,14 @@ pub async fn process_zip_file(
                                 }
                             }
                         }
-                        
+
                         res.message = format!(
-                            "{} (ID: {}でデータベースに保存されました)",
-                            res.message, file_id
+                            "{} (ID: {file_id}でデータベースに保存されました)",
+                            res.message
                         );
                     }
                     Err(e) => {
-                        error!("Failed to save to database: {}", e);
+                        error!("Failed to save to database: {e}");
                         // データベース保存失敗はエラーとしない（ファイル処理は成功しているため）
                     }
                 }
@@ -134,7 +135,7 @@ pub async fn process_zip_file(
         }
         Err(e) => Ok(ProcessResult {
             success: false,
-            message: format!("処理エラー: {}", e),
+            message: format!("処理エラー: {e}"),
             shop_name: None,
             product_name: None,
             files_extracted: vec![],
@@ -154,13 +155,13 @@ pub async fn select_output_folder(app: tauri::AppHandle) -> Result<Option<String
         .set_title("出力先フォルダを選択")
         .pick_folder(move |folder_path| {
             if let Err(e) = tx.send(folder_path) {
-                error!("Failed to send folder path: {}", e);
+                error!("Failed to send folder path: {e}");
             }
         });
 
     let folder = rx
         .recv()
-        .map_err(|e| AppError::custom(format!("フォルダ選択エラー: {}", e)).to_string())?;
+        .map_err(|e| AppError::custom(format!("フォルダ選択エラー: {e}")).to_string())?;
 
     Ok(folder.map(|p| p.to_string()))
 }

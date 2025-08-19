@@ -1,6 +1,5 @@
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileRecord {
@@ -53,14 +52,14 @@ pub struct BatchStatistics {
     pub errors: usize,
 }
 
-pub struct DatabaseRefactored {
+pub struct Database {
     conn: Connection,
 }
 
-impl DatabaseRefactored {
+impl Database {
     pub fn new(db_path: &str) -> Result<Self> {
         let conn = Connection::open(db_path)?;
-        let db = DatabaseRefactored { conn };
+        let db = Database { conn };
         db.initialize_schema()?;
         Ok(db)
     }
@@ -118,9 +117,9 @@ impl DatabaseRefactored {
             "INSERT OR REPLACE INTO files 
              (file_path, file_name, file_size, modified_time, product_id, product_name, 
               author_name, price, description, thumbnail_url, product_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
-        
+
         stmt.execute(rusqlite::params![
             file.file_path,
             file.file_name,
@@ -134,7 +133,7 @@ impl DatabaseRefactored {
             file.thumbnail_url,
             file.product_url,
         ])?;
-        
+
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -143,9 +142,9 @@ impl DatabaseRefactored {
             "SELECT id, file_path, file_name, file_size, modified_time, 
                     created_at, updated_at, product_id, product_name, 
                     author_name, price, description, thumbnail_url, product_url
-             FROM files ORDER BY created_at DESC"
+             FROM files ORDER BY created_at DESC",
         )?;
-        
+
         let file_iter = stmt.query_map([], |row| {
             Ok(FileRecord {
                 id: Some(row.get(0)?),
@@ -164,7 +163,7 @@ impl DatabaseRefactored {
                 product_url: row.get(13)?,
             })
         })?;
-        
+
         let mut files = Vec::new();
         for file in file_iter {
             files.push(file?);
@@ -199,23 +198,23 @@ impl DatabaseRefactored {
     }
 
     pub fn add_tag(&self, name: &str) -> Result<i64> {
-        let mut stmt = self.conn.prepare(
-            "INSERT OR IGNORE INTO tags (name) VALUES (?1)"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("INSERT OR IGNORE INTO tags (name) VALUES (?1)")?;
         stmt.execute([name])?;
-        
+
         let mut stmt = self.conn.prepare("SELECT id FROM tags WHERE name = ?1")?;
         let tag_id: i64 = stmt.query_row([name], |row| row.get(0))?;
-        
+
         Ok(tag_id)
     }
 
     pub fn get_all_tags(&self) -> Result<Vec<Tag>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, usage_count, created_at, updated_at 
-             FROM tags ORDER BY usage_count DESC, name ASC"
+             FROM tags ORDER BY usage_count DESC, name ASC",
         )?;
-        
+
         let tag_iter = stmt.query_map([], |row| {
             Ok(Tag {
                 id: Some(row.get(0)?),
@@ -225,7 +224,7 @@ impl DatabaseRefactored {
                 updated_at: row.get(4)?,
             })
         })?;
-        
+
         let mut tags = Vec::new();
         for tag in tag_iter {
             tags.push(tag?);
@@ -238,7 +237,7 @@ impl DatabaseRefactored {
             "INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?1, ?2)",
             [file_id, tag_id],
         )?;
-        
+
         // Update usage count
         self.conn.execute(
             "UPDATE tags SET usage_count = (
@@ -246,20 +245,20 @@ impl DatabaseRefactored {
             ) WHERE id = ?1",
             [tag_id],
         )?;
-        
+
         Ok(())
     }
 
     pub fn get_files_with_tags(&self) -> Result<Vec<FileWithTags>> {
         let files = self.get_all_files()?;
         let mut files_with_tags = Vec::new();
-        
+
         for file in files {
             let file_id = file.id.unwrap();
             let tags = self.get_tags_for_file(file_id)?;
             files_with_tags.push(FileWithTags { file, tags });
         }
-        
+
         Ok(files_with_tags)
     }
 
@@ -269,9 +268,9 @@ impl DatabaseRefactored {
              FROM tags t
              JOIN file_tags ft ON t.id = ft.tag_id
              WHERE ft.file_id = ?1
-             ORDER BY t.name"
+             ORDER BY t.name",
         )?;
-        
+
         let tag_iter = stmt.query_map([file_id], |row| {
             Ok(Tag {
                 id: Some(row.get(0)?),
@@ -281,7 +280,7 @@ impl DatabaseRefactored {
                 updated_at: row.get(4)?,
             })
         })?;
-        
+
         let mut tags = Vec::new();
         for tag in tag_iter {
             tags.push(tag?);
@@ -300,20 +299,16 @@ impl DatabaseRefactored {
     }
 
     pub fn get_file_count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files", 
-            [], 
-            |row| row.get(0)
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
     pub fn get_tag_count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM tags", 
-            [], 
-            |row| row.get(0)
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 }

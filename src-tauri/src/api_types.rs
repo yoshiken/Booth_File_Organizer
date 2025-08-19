@@ -1,7 +1,7 @@
 // API型定義 - TypeScript自動生成対応
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use schemars::JsonSchema;
 
 // =============================================================================
 // Core Domain Types
@@ -254,7 +254,7 @@ pub fn generate_typescript_bindings() -> Result<(), Box<dyn std::error::Error>> 
     ApiParameter::export()?;
     ApiExample::export()?;
     ApiError::export()?;
-    
+
     // TypeScript bindings generated successfully
     Ok(())
 }
@@ -263,7 +263,7 @@ pub fn generate_typescript_bindings() -> Result<(), Box<dyn std::error::Error>> 
 #[allow(dead_code)] // OpenAPI仕様生成用（将来使用予定）
 pub fn generate_openapi_spec() -> Result<String, Box<dyn std::error::Error>> {
     use schemars::schema_for;
-    
+
     let schema = schema_for!(ApiCommand);
     Ok(serde_json::to_string_pretty(&schema)?)
 }

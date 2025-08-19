@@ -67,3 +67,7 @@ build-docs.rs
 *.njsproj
 *.sln
 *.sw?
+
+# Act local testing tool
+act
+act.tar.gz
