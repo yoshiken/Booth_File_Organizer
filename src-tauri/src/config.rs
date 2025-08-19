@@ -80,7 +80,6 @@ pub mod database {
     pub const DATETIME_NOW: &str = "datetime('now')";
 }
 
-
 /// Regex group indices
 pub mod regex {
     /// First capture group index
