@@ -80,36 +80,6 @@ pub mod database {
     pub const DATETIME_NOW: &str = "datetime('now')";
 }
 
-/// Common test values (for test files only)
-#[cfg(test)]
-pub mod test_values {
-    /// Common test file sizes
-    pub const TEST_SIZE_1KB: i64 = 1024;
-    pub const TEST_SIZE_2KB: i64 = 2048;
-    pub const TEST_SIZE_3KB: i64 = 3072;
-    pub const TEST_SIZE_4KB: i64 = 4096;
-    pub const TEST_SIZE_5KB: i64 = 5120;
-
-    /// Test colors
-    pub const TEST_COLOR_RED: &str = "#FF0000";
-    pub const TEST_COLOR_GREEN: &str = "#00FF00";
-    pub const TEST_COLOR_BLUE: &str = "#0000FF";
-    pub const TEST_COLOR_ORANGE: &str = "#f39c12";
-    pub const TEST_COLOR_PURPLE: &str = "#9b59b6";
-    pub const TEST_COLOR_CYAN: &str = "#e74c3c";
-
-    /// Common test URLs
-    pub const TEST_BOOTH_URL_1: &str = "https://booth.pm/items/123456";
-    pub const TEST_BOOTH_URL_2: &str = "https://example.booth.pm/items/789";
-    pub const TEST_BOOTH_URL_3: &str = "https://coolshop.booth.pm/items/123456";
-
-    /// Test product IDs
-    pub const TEST_PRODUCT_ID_1: i64 = 123456;
-    pub const TEST_PRODUCT_ID_2: i64 = 789;
-
-    /// Test prices
-    pub const TEST_PRICE_3000: i64 = 3000;
-}
 
 /// Regex group indices
 pub mod regex {

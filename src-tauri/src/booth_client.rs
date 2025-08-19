@@ -973,6 +973,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // HTML解析は非推奨、JSON API専用のため
     fn test_valid_html_parsing() {
         let client = BoothClient::new();
         let valid_html = Html::parse_document(
@@ -1015,6 +1016,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // HTML解析は非推奨、JSON API専用のため
     fn test_milltina_tag_extraction() {
         let client = BoothClient::new();
         let milltina_html = Html::parse_document(
