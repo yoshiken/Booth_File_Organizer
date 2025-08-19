@@ -106,9 +106,7 @@ pub async fn process_zip_internal(
     // zip ファイルの存在確認
     if !zip_path.exists() {
         let path_display = zip_path.display();
-        return Err(anyhow!(
-            "ZIPファイルが見つかりません: {path_display}"
-        ));
+        return Err(anyhow!("ZIPファイルが見つかりません: {path_display}"));
     }
 
     // BOOTH URLからショップ名と商品名を抽出（改善版）

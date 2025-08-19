@@ -96,9 +96,8 @@ pub async fn delete_file_db(
         .lock()
         .map_err(|e| AppError::database_lock(format!("Database lock error: {e}")).to_string())?;
 
-    db.delete_file(file_id).map_err(|e| {
-        AppError::file_deletion(format!("Failed to delete file: {e}")).to_string()
-    })?;
+    db.delete_file(file_id)
+        .map_err(|e| AppError::file_deletion(format!("Failed to delete file: {e}")).to_string())?;
     Ok(None)
 }
 
@@ -124,8 +123,7 @@ pub async fn delete_file_and_folder(
 
         // データベースから削除
         db.delete_file(file_id).map_err(|e| {
-            AppError::file_deletion(format!("Failed to delete file from database: {e}"))
-                .to_string()
+            AppError::file_deletion(format!("Failed to delete file from database: {e}")).to_string()
         })?;
 
         // 物理ファイル・フォルダを削除
@@ -208,8 +206,7 @@ pub async fn batch_update_files_db(
     for file_id in file_ids {
         db.update_file(file_id, update_fields.clone())
             .map_err(|e| {
-                AppError::file_update(format!("Failed to update file {file_id}: {e}"))
-                    .to_string()
+                AppError::file_update(format!("Failed to update file {file_id}: {e}")).to_string()
             })?;
     }
     Ok(())

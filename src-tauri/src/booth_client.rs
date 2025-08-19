@@ -606,9 +606,7 @@ impl BoothClient {
             }
             Err(json_error) => {
                 // JSON APIが失敗した場合はHTML解析にフォールバック
-                log::warn!(
-                    "JSON API failed, falling back to HTML parsing: {json_error}"
-                );
+                log::warn!("JSON API failed, falling back to HTML parsing: {json_error}");
                 self.get_product_info_with_parser(&DefaultBoothParser, booth_url)
                     .await
             }
